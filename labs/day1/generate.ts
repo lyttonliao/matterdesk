@@ -32,4 +32,7 @@ async function generate(
   return prompt;
 }
 
-console.log(await generate("The tenant shall pay rent on the first day of the"));
+console.log(await generate(
+  "The tenant shall pay rent on the first day of the",
+  { maxTokens: 30, temperature: 2 }
+));

@@ -1,301 +1,203 @@
 # Notes
 
-Companion to `COURSE.md`. Chapter-by-chapter concepts, corrected answers, commands.
+Summary notes for `COURSE.md` / `PLAN.md`. Importance: **★★★ must know** · **★★ should know** · **★ reference, look up when needed**.
+
 ## RESUME HERE (for a fresh session)
 
-**Where we are:** Chapter 1 read and exercises reviewed. Lab 1 step 1 (`labs/day1/tokenize.ts`) is done and typechecks. **Next: Lab 1 step 2** (see "Lab 1" at the bottom). Chapter 2 (attention and the KV cache) comes after the lab.
-
-**Pending questions for the user to answer first (they haven't answered these yet):**
-1. For `"The tenant shall pay rent on the first day of the"`, which token do you predict wins, and with roughly what probability?
-2. What do the other four candidates look like (think leading space)?
-Then they write the `/completion` call with `n_predict: 1`, `n_probs: 5`, print the top 5, and compare to the prediction.
-
-**Environment:**
-- `llama-server` must be running: `llama-server -hf Qwen/Qwen2.5-7B-Instruct-GGUF:Q4_K_M --port 8080` (blocks the terminal; run it in a separate tab). Check with `curl localhost:8080/health`.
-- Lab code lives in `labs/day1/` (Node 24 runs `.ts` directly: `node file.ts`; typecheck with `npm run typecheck`).
-- Nothing in `docs/` or `labs/` is committed yet.
-
-**How we work (the user's requests):**
-- Teach like a book (*Designing Data-Intensive Applications* style): first principles, concrete numbers from this project, lessons for systems engineers.
-- Before asking the user to run any command, explain the technology, why we use it, and what each flag does.
-- The user writes the lab code and I review every line. Exception: they may ask me to apply fixes.
-- Quiz before moving on: the user answers first, then I correct and fill gaps. Record corrections here.
-- Gate: typecheck passes before commit. No `Co-Authored-By` trailer on commits (user's global rule).
-
-Plan: `PLAN.md` (16 days). Course outline: `COURSE.md` (20 chapters).
+- **Done:** Chapter 1 read. Lab 1 steps 1-3 (`labs/day1/tokenize.ts`, `completion.ts`, `generate.ts`), all typecheck.
+- **Skipped for now:** Lab 1 step 4 (rerun `generate` at T = 0, 0.5, 1, 2; compare against section 3). The user chose to move on to **Chapter 2** (attention and the KV cache). Come back to it.
+- **Server:** `llama-server -hf Qwen/Qwen2.5-7B-Instruct-GGUF:Q4_K_M --port 8080` (blocks the terminal; use a separate tab). Check with `curl localhost:8080/health`.
+- **Lab code:** `labs/day1/` (`node file.ts`, `npm run typecheck`).
+- **How we work:** book-style teaching with concrete numbers from this project; explain a command and its flags before running it; the user writes the lab code and I review it; quiz only on material already taught (explain new concepts instead); typecheck before commit; no `Co-Authored-By` trailer.
 
 ---
 
 # Chapter 1: Language models as probability machines
 
-## 1. The core idea
+## 1. What a model is ★★★
 
-A language model is a function from tokens to a probability distribution:
+A language model is a function: `f(sequence of tokens) -> a probability for every token in the vocabulary`.
 
-```
-f(sequence of tokens) -> probability for every token in the vocabulary
-```
+- **Token:** a piece of text from a fixed vocabulary (~152k entries for Qwen2.5). Not a character, not a word. Common words are one token; rare strings (citations, party names) fragment.
+- **Parameters** (the "B" in 7B): the learned numbers inside `f`. Fixed at inference.
+- **One decode step outputs one list of ~152k scores**, one per vocabulary token. The 152k is the vocabulary size, not the weight count.
 
-- **Token:** a piece of text from a fixed vocabulary (~152k entries for Qwen2.5). Not characters, not words.
-- **Tokenizer:** splits text into tokens using byte-pair encoding (BPE). It starts from single bytes and repeatedly merges the most frequent adjacent pairs found in training text. Common words become one token; rare strings (citations like `§ 12.3(b)(iv)`, party names) fragment into many.
-- **Parameters** (the "B" in 7B = billions of parameters): the learned numbers inside `f`. Training nudges them by gradient descent to raise the probability of the token that actually came next. We only run models (inference) and lightly adapt them later (fine-tuning, Day 10).
-- **Output of one decode step:** exactly one list of ~152k probabilities, one per vocabulary token. The 152k is the **vocabulary size**, not the weight count. It appears only at the final layer, which projects an internal vector (~3,584 numbers for Qwen2.5-7B) to one score per vocabulary token.
-
-## 2. The generation loop (autoregressive)
+## 2. The generation loop ★★★
 
 1. Tokenize the prompt.
-2. One forward pass gives the distribution over the next token. Sample **one** token from it.
-3. Append that token to the sequence.
-4. Repeat until the end-of-sequence token.
+2. One forward pass produces the next-token distribution. Sample **one** token.
+3. Append it and repeat until the end-of-sequence token (EOS).
 
-- Each output token becomes input to the next step, so **decode is sequential** for a single request.
-- **You walk a single path, not a tree.** The number of possible sequences explodes (150,000^3 is about 3.4 x 10^15 after 3 tokens), but you visit one. Beam search is the exception: it keeps k paths alive.
-- **Hallucination is built in:** the loop samples fluent continuations; nothing checks truth.
+- Each output token is the next input, so **decode is serial** for one request. Parallelizable: prompt tokens (prefill), different requests (batching), and the math inside a step.
+- You walk one path, not a tree. Nothing checks truth, so fluent fabrication is built in.
 
-### What can be parallelized
-| Thing | Why |
-|---|---|
-| Prompt tokens (prefill) | All known up front, processed in one forward pass |
-| Different requests (batching) | Many users' sequences share one read of the weights (Ch. 17) |
-| Math inside one step | Matrix multiplication across thousands of GPU cores |
+## 3. Logits, softmax, temperature ★★★
 
-Only the output tokens of one request are serial.
+**Logit:** the raw score the model assigns to each vocabulary token at one step. A real number, can be negative, unbounded. It is *not* a probability (doesn't sum to 1). Only the **differences** between logits matter.
 
-## 3. Sampling and temperature
-
-The model produces raw scores (**logits**). Temperature `T` rescales them before they become probabilities:
+**Softmax with temperature `T`** turns logits `z` into probabilities:
 
 ```
-p(token) = softmax(logit / T)
+p_i = exp(z_i / T) / Σ_j exp(z_j / T)
 ```
 
-Toy example, two candidates, logits `" month" = 10`, `" year" = 6.5` (illustrative, not measured):
+1. **Exponentiate:** makes everything positive and turns a score gap Δ into a probability ratio `e^Δ` (a gap of 3.2 means 24x as likely).
+2. **Divide by the sum:** makes the probabilities add to 1.
+- Adding a constant to every logit changes nothing (it cancels). That is why only gaps matter.
+- **Temperature divides the logits, so it scales every gap by 1/T.** The ratio between two tokens becomes (original ratio)^(1/T).
 
-| T | p(" month") | p(" year") | shape |
-|---|---|---|---|
-| 2.0 | 0.852 | 0.148 | flatter, more varied output |
-| 1.0 | 0.971 | 0.029 | the model's native distribution |
-| 0.5 | 0.9991 | 0.0009 | spikier |
-| 0 (greedy) | 1 | 0 | always the highest-scoring token |
+**Behaviour at the extremes:**
 
-- **T = 0 is greedy decoding (argmax):** the distribution collapses to a spike on one token. It is not a bell curve.
-- **Why not a bell curve:** the normal distribution comes from the Central Limit Theorem, which applies to sums or averages of many independent samples. A next-token distribution is *categorical* over 152k discrete tokens, usually extremely peaked with a long tail.
-- **Greedy is still not guaranteed bit-identical across runs.** Batching and floating-point order can change results slightly. For audit and tests, pin the seed and settings and log them.
-- top-p and top-k cut off the tail before sampling (Day 1 lab experiments).
+| T | Gaps | Result |
+|---|---|---|
+| **→ 0** | blow up (÷ tiny number) | Top token → 100%, others → 0. **Greedy decoding (argmax).** T=0 is implemented as a special case, since 1/0 is undefined |
+| **1** | unchanged | The model's native distribution |
+| **→ ∞** | shrink to 0 | Every token → 1/152k (about 0.0007%): uniform noise |
 
-## 4. Two artifacts at runtime
+**Worked example (real numbers).** Logits recovered from the logprobs of `"The tenant shall pay rent on the first day of the"`. Gap below `' month'`: lease 3.216, rental 3.295, first 3.647, calendar 4.276. Softmax over these five only (the real server numbers are lower for `' month'` because a ~5.5% tail is excluded):
+
+| T | `' month'` | `' lease'` | `' rental'` | `' first'` | `' calendar'` |
+|---|---|---|---|---|---|
+| 0.5 | 99.6% | 0.2% | 0.1% | 0.1% | 0.0% |
+| 1 | 89.5% | 3.6% | 3.3% | 2.3% | 1.2% |
+| 2 | 59.8% | 12.0% | 11.5% | 9.7% | 7.0% |
+
+- Low T concentrates probability on the leader; high T spreads it to the tail. At T=2 a wrong token is ~40% likely at every step, and each wrong token changes the context for everything after it, so long outputs drift.
+- **Logprob:** `logprob = z/T − log Σ exp(z_j/T)`, and `p = exp(logprob)`. Near 0 means near-certain; each −1 divides the probability by ~2.7.
+- **The sampled token is not the top token unless T=0.** At the server default T=0.8, a 6.2% token (`' at'`) was drawn while a 26.3% one (`.`) was available.
+- **Truncation:** top-k (40), top-p (0.95) and min-p (0.05) cut off the tail before sampling. **Server default is T=0.8**, neither native nor greedy: set sampling explicitly whenever you want reproducibility.
+- **Greedy is not guaranteed bit-identical across runs** (batching and floating-point order can change the last digits; the sampled token only flips on a near-tie). For audit and tests, pin the seed and settings and log them.
+
+## 4. Weights vs. context; the model is a pure function ★★★
 
 | | Weights | Context |
 |---|---|---|
-| What | The parameters | Tokens you send in |
-| Size | Fixed (e.g. 4.7 GB) | Grows per request |
+| Size | Fixed (4.7 GB here) | Grows per request |
 | Changes at inference | Never | Every request |
 | Holds | General learned knowledge | The contract, the question |
 
-The model cannot know the firm's matters (never in the weights), so RAG retrieves text and puts it into the context.
+- **Weight memory = parameters x bytes per parameter:** 7.6B x 2 bytes (FP16) ≈ 15 GB; 7.6B x ~4.85 bits (Q4_K_M) ≈ 4.6 GB.
+- The model keeps **no memory between calls**. A conversation works because the app resends the history each turn (like HTTP statelessness). So history, retrieved documents and audit logs are the app's to store and secure; they can contain privileged content.
+- The model has **no access control**: it uses anything in its context. Permissions must be enforced *before* text enters the context. Hence RAG (retrieve text into the context), since the firm's matters are never in the weights.
 
-**Weight memory = parameters x bytes per parameter**
-- 7.6B x 2 bytes (FP16) = 15.2 x 10^9 bytes = about 15 GB
-- 7.6B x ~4.85 bits / 8 (Q4_K_M) = about 4.6 GB
+## 5. Why prompt rules fail and Row-Level Security (RLS) works ★★★
 
-## 5. The key systems lesson: the model is a pure function
+- A prompt rule ("don't reveal other matters") is just more text. It's a probabilistic request, defeated by prompt injection, or by retrieval that already put Matter B text into the prompt.
+- **RLS** is a Postgres policy on every query from that connection: rows the user can't see are never returned, so they never reach the context.
+- Conditions for "always":
+  - The app must connect as a plain role: **superusers, `BYPASSRLS` roles and table owners (unless `FORCE ROW LEVEL SECURITY`) bypass RLS.**
+  - Set the session variable per request with `SET LOCAL` inside a transaction. With connection pooling, a stale value is a cross-user leak.
+  - Test the policies. RLS doesn't cover copies in caches, logs, traces or fine-tuned weights.
+- **Where a Matter B answer can leak:** retrieval, context, shared state (shared prefix/answer cache, logs, a tool that fetches by ID without a check), fine-tuned weights. Enforce in the database and application layers, never in the model.
 
-The model keeps no memory between calls. A "conversation" works because the **application** resends the whole history every turn (like HTTP statelessness).
+## 6. Tokenization ★★★
 
-- **State lives in your app.** History, retrieved documents and audit logs are yours to store and secure. The history log can contain privileged content: same access control, retention and audit as the documents. Prompts can also leak into model-server logs and tracing tools.
-- **The model has no access control.** It uses anything in its context. Permissions must be enforced *before* text enters the context.
-- **Context is finite** and every token costs memory and time.
+BPE (byte-pair encoding) starts from bytes and repeatedly merges the most frequent adjacent pairs.
 
-## 6. Why prompt rules fail and Row-Level Security (RLS) works
+- **The leading space belongs to the token:** `' of'` ≠ `'of'`. Mid-sentence words arrive space-prefixed. Trailing whitespace on a prompt becomes its own token and distorts the next-token distribution, so trim prompts.
+- **Digits are single tokens in Qwen** (`12` → `1`, `2`). Amounts, dates and section numbers are many tokens. `$1,250,000` should be about 10 (expected, not yet measured).
+- **Token boundaries ≠ logical boundaries.** Measured with `/tokenize`:
 
-**Prompt instruction ("don't reveal other matters"):**
-- It is just more text in the context. The model has no concept of "this matter is secured".
-- It cannot enforce anything. It is a probabilistic request, defeated by prompt injection, odd phrasing, or a retrieval step that already put Matter B text into the prompt. By then the leak has happened.
+| Input | Tokens | Chars/token |
+|---|---|---|
+| `Change of Control` | `Change`, ` of`, ` Control` (3) | 5.7 |
+| `§ 12.3(b)(iv)` | `§`, ` `, `1`, `2`, `.`, `3`, `(b`, `)(`, `iv`, `)` (10) | 1.3 |
+| `Acme Holdings, LLC` | `Ac`, `me`, ` Holdings`, `,`, ` LLC` (5) | 3.6 |
 
-**RLS:**
-- Postgres attaches a policy to a table, e.g. `USING (matter_id IN (SELECT matter_id FROM assignments WHERE user_id = current_setting('app.user_id')::uuid))`.
-- It applies on **every** query from that connection, whatever the application code, the model or an injected prompt asks for. Rows the user can't see are never returned, so they can never reach the context.
-- "Always checks" has conditions:
-  - **Superusers bypass RLS.** Table owners also bypass unless `FORCE ROW LEVEL SECURITY` is set. A role with `BYPASSRLS` bypasses it too. The app must connect as a plain non-superuser role.
-  - **The session variable must be set correctly on each connection.** With connection pooling, a leftover value from a previous request is a cross-user leak. Use `SET LOCAL` inside a transaction.
-  - **Policies are only as correct as written.** Test them.
-  - **RLS only protects rows in the database.** It does not protect copies in caches, logs, traces or fine-tuned weights.
+- The same logical string tokenizes differently by neighbours (`(iv)` alone is `(iv` + `)`; inside a citation it is `iv` + `)`). The model must *learn* the equivalence, so it can misquote or transpose. This is why **hybrid search** (exact full-text plus vector, Day 6) exists.
+- **Budget tokens with the real tokenizer** (`/tokenize`), never from characters or words: a fourfold spread between normal text and citations.
+- **Numbers are fragile.** Each digit is a separate sampled choice with no look-ahead, so errors compound (0.99^7 ≈ 93%, 0.95^7 ≈ 70%). Copying a number from the context is easy; recalling or computing one is not. **Never trust a generated number without checking it against the source.**
 
-### Where a Matter B answer could leak
-1. **Retrieval:** vector search returns a Matter B chunk. The model can't prevent it.
-2. **Context:** the model will use whatever is in the prompt.
-3. **Shared state:** prefix cache shared across users, semantic answer cache, logs/traces with prompt text, an agent tool that fetches by document ID without a check.
-4. **Weights:** fine-tuning on Matter B bakes it into a model everyone queries.
+## 7. Failure modes ★★
 
-The model prevents none of these reliably. Enforce in the database and application layers.
-
-## 7. Failure modes
-
-1. **Sampling nondeterminism:** same prompt, different outputs. Matters for audit and tests.
-2. **Tokenization surprises:** exact-match strings (party names, section numbers) fragment unpredictably.
+1. **Sampling nondeterminism:** same prompt, different outputs (matters for audit, tests).
+2. **Tokenization surprises:** exact-match strings fragment unpredictably.
 3. **Confident fabrication:** a high-probability continuation is not a verified fact.
-
-## 8. Exercise review (corrections)
-
-**Q: Can decode for token 50 run in parallel with token 49?** No: it needs the token chosen at 49. Parallelizable: prompt tokens (prefill), different requests (batching), the math inside a step. See section 2.
-
-**Q: Why does prompt-based "don't reveal other matters" fail while RLS works?** See section 6. The model has no concept of access control; a prompt rule is more text. RLS is enforced by Postgres on every query, so forbidden rows never reach the context.
-
-**Q: What happens at temperature 0?** Greedy decoding (argmax): the distribution collapses to a spike on one token. It is not a bell curve (the Central Limit Theorem applies to sums of independent samples, not to a categorical distribution over discrete tokens). See section 3.
-
-**Q: Why do exact strings like `12.3(b)` behave differently for a model than for text matching?**
-- A text engine compares characters, so matches are deterministic.
-- A model sees token IDs, and the same logical string becomes **different token sequences depending on its neighbors**:
-
-```
-(b)                          "(b"  ")"
-(iv)                         "(iv" ")"
-(b)(iv)                      "(b"  ")("  "iv"  ")"
-Section 12.3(b) applies      "Section" " " "1" "2" "." "3" "(b" ")" " applies"
-Section 12.3(b)(iv) applies  "Section" " " "1" "2" "." "3" "(b" ")(" "iv" ")" " applies"
-```
-
-- **Token boundaries don't match logical boundaries:** legally the citation has units `12.3`, `(b)`, `(iv)`, but no token equals `(b)` or `(iv)` inside the longer string. `)(` straddles the end of one unit and the start of the next. `(iv)` alone is `"(iv"` + `")"`; inside the citation it becomes `"iv"` + `")"`.
-- The model must *learn* that different sequences mean the same thing. That is statistical, not guaranteed, so it can misquote or transpose.
-- Embeddings inherit this and blur exact identifiers into general meaning. This is why **hybrid search** (character-exact full-text plus vector, Day 6) exists.
-- Even plain words fragment: `twelve` is `"tw"` + `"elve"`.
-
-**Q: Estimate token count from word count or character count?** Neither is reliable:
-
-| Text | Chars | Tokens | Chars per token |
-|---|---|---|---|
-| `Change of Control` | 17 | 3 | 5.7 |
-| `§ 12.3(b)(iv)` | 13 | 10 | 1.3 |
-
-- A fourfold spread, and contracts are full of citations and numbers.
-- **For a real budget, count with the real tokenizer** (`/tokenize` or the model's tokenizer library). Tokenizers are model-specific.
-- Heuristics are for rough estimates only: tokenize a sample of your own documents and compute tokens per character per document type. Characters predict better than words.
-- Ingestion (Day 4) counts tokens with the actual tokenizer when chunking.
 
 ---
 
-# Technologies and concepts
+# Hardware and performance
+
+## Prefill vs. decode ★★★
+
+- **Prefill** processes the prompt in parallel: **compute-bound**.
+- **Decode** makes one token per step and reads every weight once, using each for ~2 math operations: **memory-bandwidth-bound**.
+- **Speed ceiling = memory bandwidth / model bytes** = 273 GB/s / 4.7 GB ≈ 58 tokens/s (M4 Pro). Real numbers land lower.
+- Quantization speeds up decode because fewer bytes are read per token. GPU sizing is built on this (Chapters 4 and 18).
+
+## KV cache (Chapter 2 verifies this) ★★★
+
+- Every processed token leaves a **key (K) vector** and **value (V) vector** at every layer; later tokens attend to them. Caching avoids recomputing the whole history each step.
+- **Per-token size = 2 (K, V) x layers x KV heads x head dimension x bytes.** Qwen2.5-7B, *recalled from memory, verify*: 28 layers, 4 KV heads, head dim 128, FP16 → 2 x 28 x 4 x 128 x 2 = **57,344 bytes ≈ 57 KB/token**. A full 131,072-token context ≈ **7.5 GB**, on top of the 4.7 GB weights.
+- **The cache grows with context, not with the weights:** it's a record of *this input*, one entry per token (linear in length). Depends on model shape (layers, KV heads, head dim), not directly on parameter count. Grouped-query attention (4 KV heads vs. 28 query heads) shrinks it ~7x.
+- **Why it matters (observed, 11-token prompt, `cache_prompt: true`):**
+
+```
+call 1: prompt_n=1 cache_n=10   (prompt was already cached from an earlier run)
+call 2: prompt_n=1 cache_n=11   (11-token prefix reused, only ' month' processed)
+```
+
+  - Generating 20 tokens from an 11-token prompt: **410 token evaluations without a cache** (11 + 12 + … + 30) vs. **30 with it** (11 + 19). Quadratic vs. linear.
+  - The server matches the longest common **token prefix**. Re-tokenizing the concatenated text can shrink the match.
+  - **Even a full match re-runs the last token:** sampling needs the logits from the last position, and logits are not stored in the KV cache. A cache hit saves the shared prefix; every request still costs ≥ 1 forward pass.
+  - Not yet observed: a cold start should show `prompt_n=11, cache_n=0`.
+- Open: is the 7.5 GB total or per slot? Measure memory idle vs. after a long prompt.
+
+## Key terms ★★
 
 | Term | Meaning |
 |---|---|
-| Large language model (LLM) | Neural network that predicts the next token from the previous ones |
-| GGUF | One file format holding weights, tokenizer and metadata (e.g. chat template). Made for llama.cpp |
-| Quantization | Storing each weight in fewer bits. In `Q4_K_M`: Q4 = about 4 bits per weight, K = block-wise K-quant scheme, M = medium accuracy/size mix |
-| llama.cpp | C/C++ inference engine for CPU and GPU. Exposes the tokenizer, KV (key-value) cache and quantization tools |
-| Metal | Apple's GPU programming interface. Apple Silicon has unified memory: CPU and GPU share the same RAM, so the GPU reads the model in place |
-| Docker on macOS | Runs in a Linux VM with no Metal access, so a containerized model is CPU-only and much slower. Run the model natively, other services in Docker |
-| OpenAI-compatible API | `llama-server` exposes `/v1/chat/completions`, so app code stays portable across llama.cpp, Ollama, vLLM |
-| Instruct model | Tuned to follow chat instructions, vs. a base model that only continues text |
-| KV cache | Stored key/value vectors for already-processed tokens so they aren't recomputed (Chapter 2) |
-| Prefill vs. decode | Prefill processes the prompt in parallel (compute-bound). Decode makes one token per step (memory-bandwidth-bound) |
-
-## Decode is memory-bandwidth-bound
-
-Each token requires reading every weight once, using each for about 2 math operations. The chip can do far more math than it can fetch bytes.
-
-- Speed ceiling = memory bandwidth / model size in bytes = 273 GB/s / 4.7 GB = about 58 tokens/second (M4 Pro). Real numbers land lower.
-- Prefill reuses each loaded weight across all prompt tokens, so it is compute-bound.
-- Quantization speeds up decode because fewer bytes are read per token.
-- GPU sizing is built on this relationship (Chapters 4 and 18).
+| GGUF | One file holding weights, tokenizer and metadata. Made for llama.cpp |
+| Quantization | Fewer bits per weight. `Q4_K_M`: ~4 bits, K = block-wise K-quant, M = medium size/accuracy mix |
+| Instruct vs. base model | Instruct follows chat instructions; base only continues text |
+| Unified memory + Metal | Apple Silicon: CPU and GPU share RAM; Metal is the GPU API. Docker on macOS has no Metal, so run the model natively and everything else in Docker |
+| OpenAI-compatible API | `/v1/chat/completions` keeps app code portable across llama.cpp, Ollama, vLLM |
 
 ---
 
-# Commands
+# llama-server cheat sheet ★
 
-**`brew install llama.cpp`**
-- Installs prebuilt binaries into `/opt/homebrew/bin`: `llama-server`, `llama-cli`, `llama-quantize`, `llama-perplexity`.
-- Only adds files. Undo with `brew uninstall llama.cpp`.
+Hardware: Apple M4 Pro, 48 GB unified memory, 273 GB/s.
 
-**`llama-server -hf Qwen/Qwen2.5-7B-Instruct-GGUF:Q4_K_M --port 8080`**
-- `-hf` downloads from a Hugging Face repo; the `:Q4_K_M` suffix picks the quantization file.
-- Caches under `~/Library/Caches/llama.cpp`, loads weights into unified memory, allocates the KV cache, starts an HTTP server.
-- Binds to `127.0.0.1` by default (only this machine can reach it). Matters for a law firm; revisit on Day 12.
-- Auto-offloads layers to the GPU via Metal.
-- Caveat: Qwen's official repo ships split shards; if `-hf` errors, use a repo with a single-file GGUF.
-
-**`curl localhost:8080/v1/chat/completions ...`**
-- `messages` is a list of `{role, content}` turns (`system`, `user`, `assistant`), wrapped in the model's chat template (marker tokens like `<|im_start|>`).
-- `max_tokens` caps the number of decode steps.
-- Answer is in `choices[0].message.content`; token counts in `usage`; llama.cpp adds a `timings` block (prefill and decode speed).
-
----
-
-# llama-server in practice (observed on this machine)
-
-Hardware: Apple M4 Pro, 48 GB unified memory, 273 GB/s memory bandwidth.
-
-## Reading the startup log
-
-| Log line | Meaning |
-|---|---|
-| `Downloading ...00001-of / 00002-of` | Sharded GGUF (one model split across files). `-hf` handled it |
-| `n_threads = 10` | CPU threads for work not on the GPU |
-| `n_slots = 4` | Server holds 4 independent conversations at once; each slot has its own sequence state. A simple form of batching (Ch. 17) |
-| `n_ctx_slot = 131072` | Each slot may use up to 131,072 tokens of context |
-| `kv_unified = true` | All slots share one pool of KV cache memory |
-| `control-looking token '</s>'` | Harmless metadata quirk in the model file, overridden by llama.cpp |
-| `no API key ... CORS allows all origins` | Anyone who can reach the port can use it, and any web page in your browser can send it requests. Localhost binding keeps other machines out. Lock down on Day 12 (API key, origin rules) |
-| `default port will change to :9931` | Pin `--port` explicitly so upgrades don't break clients |
-
-## Endpoints used so far
+**Run:** `llama-server -hf Qwen/Qwen2.5-7B-Instruct-GGUF:Q4_K_M --port 8080`
+- `-hf` downloads from Hugging Face (`:Q4_K_M` picks the quantization); cached under `~/Library/Caches/llama.cpp`. Pin `--port` explicitly (the default will change).
+- Binds to `127.0.0.1`. **No API key and CORS allows all origins**, so any web page in your browser can hit it. Lock down on Day 12.
+- Startup log: `n_slots = 4` (four concurrent conversations), `n_ctx_slot = 131072`, `kv_unified = true` (slots share one KV pool).
 
 | Endpoint | Purpose |
 |---|---|
-| `GET /health` | Liveness: `{"status":"ok"}` once the model is loaded |
+| `GET /health` | `{"status":"ok"}` once loaded |
 | `GET /props` | Server and default generation settings |
-| `POST /tokenize` | llama.cpp-native (no `/v1` prefix). `/v1/tokenize` is a 404, because `/v1/*` is only the OpenAI-compatible surface |
-| `POST /v1/chat/completions` | OpenAI-compatible chat |
+| `POST /tokenize` | `{"content": "<one string>"}` → IDs; add `"with_pieces": true` for pieces. An array input is concatenated into one flat list, so send one request per string. No `/v1` prefix |
+| `POST /completion` | Raw completion: `prompt`, `n_predict`, `n_probs`, `temperature`, `cache_prompt` |
+| `POST /v1/chat/completions` | Chat with `messages` of `{role, content}`, wrapped in the chat template. Answer in `choices[0].message.content`; `usage` and `timings` included |
 
-**Default sampling settings** (from `/props`): temperature 0.8, top_k 40, top_p 0.95, min_p 0.05. So the server default is neither T=1 nor greedy. Set sampling explicitly in every request you want reproducible.
-
-## `/tokenize` behaviour (verified with curl)
-
-- Request: `{"content": "<one string>"}`. Response: `{"tokens": [4072, 315, 7779]}`: IDs only.
-- Add `"with_pieces": true` to get `{"tokens": [{"id": 4072, "piece": "Change"}, ...]}`.
-- `"Change of Control"` is 3 tokens: `Change`, ` of`, ` Control`. **The space is part of the token** (` of`, not `of`). The tokenizer treats a leading space as part of the word.
-- `content` as an array is accepted but the results are **concatenated into one flat list**, so you can't tell which tokens belong to which string. Send one request per string.
-
-**Measured with `tokenize.ts`:**
-
-| Input | Tokens |
-|---|---|
-| `Change of Control` | `Change`, ` of`, ` Control` (3) |
-| `§ 12.3(b)(iv)` | `§`, ` `, `1`, `2`, `.`, `3`, `(b`, `)(`, `iv`, `)` (10) |
-| `Acme Holdings, LLC` | `Ac`, `me`, ` Holdings`, `,`, ` LLC` (5) |
-
-- **Qwen splits digits one at a time:** `12` is `1`, `2`. Affects amounts, dates and section numbers.
-- Punctuation fuses with letters (`(b`) and across groups (`)(`).
-- The space after `§` is its own token (ID 220).
-- Rare names fragment (`Acme` is `Ac` + `me`); common words (`Holdings`, `LLC`) stay whole.
-
-## TypeScript notes from the lab
-
-- `tsc` passing does not mean the code works: a scheme-less URL typechecks and fails at runtime. `fetch` errors hide the cause; read `error.cause` (it said `unknown scheme`).
-- `response.json()` returns `any`; `as SomeType` is a compile-time claim, not validation. Validate at boundaries later.
-- Don't swallow errors in a `catch` that returns `null`: callers can't tell "no data" from "server down".
-- `no-await-in-loop` lint: independent requests should run concurrently with `Promise.all` (fails fast; use `Promise.allSettled` for partial results; unbounded, so cap concurrency for bulk work). **Awaiting in a loop is correct when each iteration depends on the previous one**, e.g. the generation loop in Lab step 3. Silence the rule there with a comment explaining why.
-
-## KV cache, preview (Chapter 2 verifies this)
-
-- Every token processed at every layer leaves a **key vector** and **value vector** that later tokens attend to. Storing them avoids recomputing the whole history each step. That store is the KV cache.
-- Per-token cache size = 2 (K and V) x layers x KV heads x head dimension x bytes per value.
-- Qwen2.5-7B (recalled from memory, verify): 28 layers, 4 KV heads, head dimension 128, FP16 (2 bytes):
-  - 2 x 28 x 4 x 128 x 2 = **57,344 bytes**, about 57 KB per token.
-  - A full 131,072-token context = 131,072 x 57,344 = about **7.5 GB**, on top of the 4.7 GB of weights.
-- **Why the cache grows with context, not with the weights:** the weights are learned once and are the same for every request. The cache is a record of *this particular input*: one entry per token, so it grows linearly with context length.
-- It does depend on model *shape* (layers, KV heads, head dimension), not directly on parameter count. Qwen has 28 query heads but only 4 KV heads (grouped-query attention), which shrinks the cache about 7x versus storing one KV pair per query head.
-- Open: is the 7.5 GB total, or per slot? Measure memory with the server idle vs. after a long prompt.
+**`/completion` response:**
+- `content` is the **sampled** token. `completion_probabilities[0].top_logprobs` is the ranked candidate list (logprobs, convert with `Math.exp`).
+- **`post_sampling_probs: false` (default): reported probabilities exclude temperature, top-k and top-p, so changing T won't change them.** Set it `true` to see the post-temperature distribution (inferred from the field name; confirm in step 4).
+- **`stop` is `true` on every `n_predict: 1` response** (`stop_type: "limit"`). Use `stop_type === "eos"` for end-of-sequence.
+- Measured top 5 for the lease prompt: `' month'` 84.6%, `' lease'` 3.4%, `' rental'` 3.1%, `' first'` 2.2%, `' calendar'` 1.2% (sum 94.5%). Peaked because it's a near-fixed idiom; a flat example (`"...hitting an SIR in "`) gave `2` 26.3%, `3` 24.8%, `1` 20.9%, `5` 13.1%, `4` 7.2%.
 
 ---
 
-# Lab 1 (in progress)
+# TypeScript lessons from the lab ★★
 
-Status: step 1 done (`labs/day1/tokenize.ts`). **Step 2 is next; user has not yet written it or made the prediction (see RESUME HERE).**
+- `tsc` passing ≠ it works: a scheme-less URL typechecks and fails at runtime. `fetch` hides the cause; read `error.cause`.
+- `response.json()` is `any`; `as Type` is a compile-time claim, not validation. Validate at boundaries.
+- Don't swallow errors by returning `null` from `catch`: callers can't tell "no data" from "server down".
+- **Awaiting in a loop is correct when each iteration depends on the previous one** (generation). Independent requests belong in `Promise.all`. Suppress the lint with a reason (`// NOSONAR: ...`).
+- Prefer top-level `await generate(...)` over a bare call: a rejection then crashes loudly instead of vanishing. Needs `"type": "module"` and `module: nodenext`.
+- Never put response fields (`timings`) in the request `kwargs`; the server silently ignores them.
+- Parameterize with a typed options object: `generate(text, { maxTokens = 30, temperature = 0 } = {})`.
 
-1. DONE: `/tokenize` on `"Change of Control"`, `"§ 12.3(b)(iv)"`, a party name. Print tokens and IDs.
-2. `/completion` with `n_predict: 1`, `n_probs: 5`. Print the top 5 next-token candidates and probabilities.
-3. Write your own generation loop: call the server one token at a time, append the winner, repeat until a sentence ends.
-4. After step 2, rerun it at temperatures 0, 0.5, 1, 2 and compare against the table in section 3.
+---
+
+# Mistakes to remember ★★
+
+- **Predicting a sentence-ending frame:** at "first day of the ___" the model completes an *idiom* (`' month'`), it doesn't pick a subject. Candidates are alternatives for the next slot, all space-prefixed.
+- **Sampled ≠ top:** `' at'` (6.2%) was a random draw at T=0.8; the T=0 pick was `.` (26.3%). Lowering T makes the leader *more* likely, and runner-ups less.
+- **Cache counters are per call:** call 2 is `prompt_n=1, cache_n=11` (the 30 in my earlier example was the whole run's total).
 
 # Open questions
-- How much of the Q4_K_M 4.85 bits/weight average is the scale factors vs. the higher-precision tensors? (Day 2)
+- How much of Q4_K_M's 4.85 bits/weight is scale factors vs. higher-precision tensors? (Day 2)
+- Is the KV cache budget total or per slot? (Chapter 2)
