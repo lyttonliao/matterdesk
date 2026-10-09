@@ -5,9 +5,8 @@ Summary notes for `COURSE.md` / `PLAN.md`. Importance: **★★★ must know** �
 ## RESUME HERE (for a fresh session)
 
 - **Done:** Chapter 1 read. Lab 1 steps 1-3 (`labs/day1/tokenize.ts`, `completion.ts`, `generate.ts`), all typecheck.
-- **Skipped for now:** Lab 1 step 4 (rerun `generate` at T = 0, 0.5, 1, 2; compare against section 3). Come back to it.
-- **Chapter 2 in progress:** concepts fully written in `docs/NOTES-ch2.md` (vocabulary, attention, multi-head, KV cache, GQA, cache sizing). Server memory measured (section 8). Chapter 2 is done; next is development (Lab 2).
-- **Uncommitted:** `docs/NOTES.md`, `docs/NOTES-ch2.md`, and the step-4 edit to `labs/day1/generate.ts` (`temperature: 2`).
+- **Lab 1 step 4 done:** `labs/day1/temperature-sweep.ts` (results in `NOTES-ch3.md` section 3).
+- **Chapters 2-4 done:** notes in `docs/NOTES-ch2.md`, `-ch3.md`, `-ch4.md`. Streaming client built (`labs/day1/stream.ts`, `stream-bench.ts`, committed). Chapter 4 notes written (`docs/NOTES-ch4.md`). **Next: Day 2 (quantization script).**
 - **Server:** `llama-server -hf Qwen/Qwen2.5-7B-Instruct-GGUF:Q4_K_M --port 8080` (blocks the terminal; use a separate tab). Check with `curl localhost:8080/health`.
 - **Lab code:** `labs/day1/` (`node file.ts`, `npm run typecheck`).
 - **How we work:** book-style teaching with concrete numbers from this project; explain a command and its flags before running it; the user writes the lab code and I review it; no quizzes of any kind (user wants to move faster into development); typecheck before commit; no `Co-Authored-By` trailer.
@@ -64,7 +63,7 @@ p_i = exp(z_i / T) / Σ_j exp(z_j / T)
 | 1 | 89.5% | 3.6% | 3.3% | 2.3% | 1.2% |
 | 2 | 59.8% | 12.0% | 11.5% | 9.7% | 7.0% |
 
-- Low T concentrates probability on the leader; high T spreads it to the tail. At T=2 a wrong token is ~40% likely at every step, and each wrong token changes the context for everything after it, so long outputs drift.
+- Low T concentrates probability on the leader; high T spreads it to the tail. At T=2 a wrong token is ~40% likely at every step, and each wrong token changes the context for everything after it, so long outputs drift. **Caveat (measured, Chapter 3 section 3): this holds only with truncation off. With the server defaults, T=2 still returned `' month'` 60/60 times, because top-k/top-p/min-p run before temperature.**
 - **Logprob:** `logprob = z/T − log Σ exp(z_j/T)`, and `p = exp(logprob)`. Near 0 means near-certain; each −1 divides the probability by ~2.7.
 - **The sampled token is not the top token unless T=0.** At the server default T=0.8, a 6.2% token (`' at'`) was drawn while a 26.3% one (`.`) was available.
 - **Truncation:** top-k (40), top-p (0.95) and min-p (0.05) cut off the tail before sampling. **Server default is T=0.8**, neither native nor greedy: set sampling explicitly whenever you want reproducibility.
@@ -201,5 +200,5 @@ Hardware: Apple M4 Pro, 48 GB unified memory, 273 GB/s.
 - **Cache counters are per call:** call 2 is `prompt_n=1, cache_n=11` (the 30 in my earlier example was the whole run's total).
 
 # Open questions
-- How much of Q4_K_M's 4.85 bits/weight is scale factors vs. higher-precision tensors? (Day 2)
-- Is the KV cache budget total or per slot? (Chapter 2)
+- ~~Q4_K_M bits/weight~~ Answered (Chapter 4, section 3): 4.913 for this model = 80% Q4_K at 4.5 bits + 20% Q6_K at 6.5625 bits. The usual 4.85 is a generic figure that varies per model.
+- ~~Is the KV cache budget total or per slot?~~ Answered (Chapter 2, section 8): total, one shared pool (inferred from memory size).
