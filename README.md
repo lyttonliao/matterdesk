@@ -5,9 +5,9 @@ Goal: be genuinely fluent in every line of the JD, by writing code heavily on on
 
 ## Ground rules
 
-1. **You write the code.** Claude explains, reviews, quizzes. Claude only generates boilerplate (Compose files, config), and you read every line of it.
+1. **You write the code.** Claude explains and reviews. Claude only generates boilerplate (Compose files, config), and you read every line of it.
 2. **Review ritual on every commit.** One concern per commit. Before committing, explain each changed line. If you can't, stop and dig in.
-3. **Quiz before moving on.** Each commit: 2-3 non-trivial concepts, 1-2 questions you answer first.
+3. **Name the concepts.** Each commit: 2-3 non-trivial concepts, listed briefly. No quizzes.
 4. **Gate:** typecheck, lint, tests pass before any commit.
 5. **Every day ends with a failure test** that attacks what you built. Security and infra claims need a test that tries to break them.
 

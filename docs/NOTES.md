@@ -5,10 +5,12 @@ Summary notes for `COURSE.md` / `PLAN.md`. Importance: **★★★ must know** �
 ## RESUME HERE (for a fresh session)
 
 - **Done:** Chapter 1 read. Lab 1 steps 1-3 (`labs/day1/tokenize.ts`, `completion.ts`, `generate.ts`), all typecheck.
-- **Skipped for now:** Lab 1 step 4 (rerun `generate` at T = 0, 0.5, 1, 2; compare against section 3). The user chose to move on to **Chapter 2** (attention and the KV cache). Come back to it.
+- **Skipped for now:** Lab 1 step 4 (rerun `generate` at T = 0, 0.5, 1, 2; compare against section 3). Come back to it.
+- **Chapter 2 in progress:** concepts fully written in `docs/NOTES-ch2.md` (vocabulary, attention, multi-head, KV cache, GQA, cache sizing). Server memory measured (section 8). Chapter 2 is done; next is development (Lab 2).
+- **Uncommitted:** `docs/NOTES.md`, `docs/NOTES-ch2.md`, and the step-4 edit to `labs/day1/generate.ts` (`temperature: 2`).
 - **Server:** `llama-server -hf Qwen/Qwen2.5-7B-Instruct-GGUF:Q4_K_M --port 8080` (blocks the terminal; use a separate tab). Check with `curl localhost:8080/health`.
 - **Lab code:** `labs/day1/` (`node file.ts`, `npm run typecheck`).
-- **How we work:** book-style teaching with concrete numbers from this project; explain a command and its flags before running it; the user writes the lab code and I review it; quiz only on material already taught (explain new concepts instead); typecheck before commit; no `Co-Authored-By` trailer.
+- **How we work:** book-style teaching with concrete numbers from this project; explain a command and its flags before running it; the user writes the lab code and I review it; no quizzes of any kind (user wants to move faster into development); typecheck before commit; no `Co-Authored-By` trailer.
 
 ---
 
