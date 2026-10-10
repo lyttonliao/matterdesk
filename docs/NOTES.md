@@ -6,7 +6,7 @@ Summary notes for `COURSE.md` / `PLAN.md`. Importance: **★★★ must know** �
 
 - **Done:** Chapter 1 read. Lab 1 steps 1-3 (`labs/day1/tokenize.ts`, `completion.ts`, `generate.ts`), all typecheck.
 - **Lab 1 step 4 done:** `labs/day1/temperature-sweep.ts` (results in `NOTES-ch3.md` section 3).
-- **Chapters 2-4 done:** notes in `docs/NOTES-ch2.md`, `-ch3.md`, `-ch4.md`. Streaming client built (`labs/day1/stream.ts`, `stream-bench.ts`, committed). Chapter 4 notes written (`docs/NOTES-ch4.md`). **Next: Day 2 (quantization script).**
+- **Chapters 2-4 done:** notes in `docs/NOTES-ch2.md`, `-ch3.md`, `-ch4.md`. Streaming client built (`labs/day1/stream.ts`, `stream-bench.ts`, committed). Chapter 4 notes written (`docs/NOTES-ch4.md`). Chapter 5 notes written (`docs/NOTES-ch5.md`). Day 2 lab written but deliberately not run (`labs/day2/quantize-bench.ts`; skipped the 15 GB FP16 download). **Next: Chapter 6 (MoE, MLA).** Open issue: `labs/day1/node_modules` is tracked in git (653 files) and there is no `.gitignore`.
 - **Server:** `llama-server -hf Qwen/Qwen2.5-7B-Instruct-GGUF:Q4_K_M --port 8080` (blocks the terminal; use a separate tab). Check with `curl localhost:8080/health`.
 - **Lab code:** `labs/day1/` (`node file.ts`, `npm run typecheck`).
 - **How we work:** book-style teaching with concrete numbers from this project; explain a command and its flags before running it; the user writes the lab code and I review it; no quizzes of any kind (user wants to move faster into development); typecheck before commit; no `Co-Authored-By` trailer.
