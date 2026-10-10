@@ -1,0 +1,13 @@
+# dependencies (restore with `npm install` in each labs/dayN directory)
+node_modules/
+
+# model files and quantization outputs are large and reproducible
+*.gguf
+labs/day2/quantized/
+
+# OS and editor noise
+.DS_Store
+
+# secrets
+.env
+.env.*
