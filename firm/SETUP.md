@@ -119,6 +119,35 @@ The extension is available but not enabled. The first migration runs
 - The `POSTGRES_*` variables only apply on the first start with an empty volume. To change
   them afterwards: `docker compose down -v` (deletes the data), then `up -d`.
 
+## Step 5: Drizzle, Vitest, zod (tooling only, no application code)
+
+```bash
+cd firm
+pnpm add drizzle-orm postgres zod            # drizzle-orm 0.45, postgres.js driver, zod 4
+pnpm add -D drizzle-kit vitest               # drizzle-kit 0.31, vitest 5
+pnpm pkg set scripts.test="vitest run --passWithNoTests" \
+  scripts.db:generate="drizzle-kit generate" scripts.db:migrate="drizzle-kit migrate"
+cp .env.example .env                         # gitignored; drizzle-kit needs DATABASE_URL
+```
+
+Files written by hand: `drizzle.config.ts` (schema `./src/db/schema.ts`, output `./drizzle`,
+`dbCredentials.url` from `DATABASE_URL`) and `vitest.config.ts` (node environment,
+`src/**/*.test.ts`, `@` alias to `src/`).
+
+**Gotchas:**
+
+- Neither drizzle-kit nor Vitest loads `.env` (only Next.js does). Both configs call
+  `process.loadEnvFile(".env")` (built into Node 20.12+), guarded with `existsSync` so CI
+  can supply `DATABASE_URL` directly. No `dotenv` dependency needed.
+- pnpm 10 skips dependency install scripts by default ("Ignored build scripts: esbuild,
+  unrs-resolver"). That is safe here: esbuild's binary arrives as a prebuilt optional
+  package. Verified by running `pnpm db:generate` and `pnpm test` (both start fine).
+- `--passWithNoTests` exists only because there are no tests yet. Remove it from the
+  `test` script once the first test lands (step 6), so an accidentally empty suite fails.
+- Smoke test before a schema exists: `pnpm db:generate` should fail with
+  `No schema files found for path config ['./src/db/schema.ts']` after reading the config.
+  That error proves the config and `DATABASE_URL` load correctly.
+
 ## Replication checklist
 
 1. Steps in order, one commit each.
