@@ -82,6 +82,43 @@ pnpm format:check && pnpm typecheck && pnpm lint
 most tutorials. Checked with `npm view cn@0.4.0 repository.url maintainers`.
 Tutorials may show a different `utils.ts`.
 
+## Step 4: Postgres 16 + pgvector in Docker Compose
+
+Files (written by hand): `compose.yaml`, `.env.example`; `compose-cheat-sheet.yaml` is an
+annotated study reference with extra keys and is not loaded by Compose. One line added to
+`.gitignore` after `.env*`:
+
+```
+!.env.example
+```
+
+(Next's template ignores `.env*`, which would also hide the template.)
+
+```bash
+cp .env.example .env                       # optional; compose.yaml has the same defaults
+docker compose config                      # offline parse; works without a daemon
+open -a Docker                             # start Docker Desktop, wait until it is ready
+docker compose up -d
+docker compose ps                          # expect "Up ... (healthy)", 127.0.0.1:5433->5432
+docker compose exec -T db psql -U firm -d firm -At \
+  -c "SELECT version();" \
+  -c "SELECT name || ' ' || default_version FROM pg_available_extensions WHERE name = 'vector';"
+# PostgreSQL 16.15 ..., vector 0.8.7
+```
+
+The extension is available but not enabled. The first migration runs
+`CREATE EXTENSION IF NOT EXISTS vector`.
+
+**Gotchas on this machine:**
+
+- A local Postgres already listens on 127.0.0.1:5432, so the container publishes on host
+  port **5433**. Check yours with `lsof -nP -iTCP:5432 -sTCP:LISTEN`.
+- My shell had `DOCKER_HOST` pointing at a stopped Lima VM, which overrides the active
+  Docker context. Run Docker commands as `env -u DOCKER_HOST docker compose ...`, or
+  `unset DOCKER_HOST` for the session. Skip this if `echo $DOCKER_HOST` is empty for you.
+- The `POSTGRES_*` variables only apply on the first start with an empty volume. To change
+  them afterwards: `docker compose down -v` (deletes the data), then `up -d`.
+
 ## Replication checklist
 
 1. Steps in order, one commit each.

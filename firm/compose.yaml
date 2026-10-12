@@ -1,0 +1,40 @@
+name: firm # project name; prefixes container/volume/network names
+
+services:
+  db: # service name; also its DNS hostname on the Compose network
+    image: pgvector/pgvector:pg16
+
+    # `environment:` sets variables inside container, postgres image
+    # reads these ONLY when it initializes an empty data directory (first start)
+    # `${VAR:-default}`: use $VAR from shell or ./.env
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-firm}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-firm_dev}
+      POSTGRES_DB: ${POSTGRES_DB:-firm}
+
+    # `ports:` is "HOST:CONTAINER", host port 5433 because local postgres already owns
+    # port 5432
+    ports:
+      - "127.0.0.1:${DB_PORT:-5433}:5432"
+
+    # `volumes:` entries are "SOURCE:TARGET", name `pgdata` is a Docker-managed name volume
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+    # `healthcheck:` runs command inside the container, exit 0 = healthy
+    # `$$` stops Compose from interlopating on the host; the container's shell
+    # expands ${POSTGRES_USER} instead
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+    # no (default) | always | on-failure | unless-stopped
+    # unless-stopped: restart after crashes and reboots, but not after `docker compose stop`
+    restart: unless-stopped
+
+# Top-level blocks declare things services refer to by name
+volumes:
+  pgdata:
