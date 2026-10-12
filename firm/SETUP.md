@@ -131,7 +131,7 @@ cp .env.example .env                         # gitignored; drizzle-kit needs DAT
 ```
 
 Files written by hand: `drizzle.config.ts` (schema `./src/db/schema.ts`, output `./drizzle`,
-`dbCredentials.url` from `DATABASE_URL`) and `vitest.config.ts` (node environment,
+`dbCredentials.url` from `DATABASE_URL`) and `vitest.config.mts` (node environment,
 `src/**/*.test.ts`, `@` alias to `src/`).
 
 **Gotchas:**
@@ -144,6 +144,10 @@ Files written by hand: `drizzle.config.ts` (schema `./src/db/schema.ts`, output 
   package. Verified by running `pnpm db:generate` and `pnpm test` (both start fine).
 - `--passWithNoTests` exists only because there are no tests yet. Remove it from the
   `test` script once the first test lands (step 6), so an accidentally empty suite fails.
+- The Vitest config is `.mts`, not `.ts`. With `.ts`, Vite warns "ESM syntax in a file
+  loaded as CommonJS" because `package.json` has no `"type": "module"`. `.mts` forces ESM
+  for that one file. `tsconfig.json` `include` needs `"**/*.mts"` or the typecheck gate
+  silently skips it.
 - Smoke test before a schema exists: `pnpm db:generate` should fail with
   `No schema files found for path config ['./src/db/schema.ts']` after reading the config.
   That error proves the config and `DATABASE_URL` load correctly.
