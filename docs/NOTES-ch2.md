@@ -174,3 +174,4 @@ Tool: `footprint <pid>` (macOS) reports a process's memory by category. Plain RS
 
 ## Next
 1. Return to **Lab 1 step 4** (temperature sweep) when convenient, then start Lab 2.
+2. Maybe address 7 and 8 later.
