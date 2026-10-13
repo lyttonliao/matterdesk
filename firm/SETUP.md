@@ -112,3 +112,24 @@ Concepts:
 - Always read generated SQL: a column rename is generated as drop + add.
 - Enable `vector` on Day 4 with `pnpm db:generate --custom --name enable_vector`, alongside
   the `chunks` table that needs it.
+
+## Step 7: first test and validated environment
+
+Write `src/db/matters.test.ts` (integration test against the real dev Postgres: insert a
+user, client, matter and `matter_members` row, assert the join returns the matter only for
+the member). Remove `--passWithNoTests` from the `test` script now that a test exists:
+
+```bash
+pnpm pkg set scripts.test="vitest run"
+```
+
+Write `src/env.schema.ts` (zod schema), `src/env.ts` (`export const env = schema.parse(process.env)`)
+and `src/env.test.ts` (`safeParse` accepts a valid URL, rejects a malformed or missing one).
+
+Concepts:
+
+- Integration tests hit the real database so constraints, joins and cascades are exercised.
+  Use per-run unique values and delete in foreign-key order.
+- Validate configuration once at boot (fail fast) and import the typed `env`, never
+  `process.env`. The schema lives in its own file so tests do not parse the real environment.
+- Environment values are strings: use `z.coerce.number()` for numbers.
