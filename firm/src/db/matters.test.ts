@@ -19,23 +19,23 @@ let outsiderId: string;
 let clientId: string;
 let matterId: string;
 
-beforeAll(async() => {
+beforeAll(async () => {
   // insert two users (members + outsider), one client, one matter, one matter_members row
   const [member, outsider] = await db
     .insert(users)
     .values([
       {
         fullName: "Attorney Dudu", // member
-        username: "attorney_dudu",
+        username: `attorney_dudu_${tag}`,
         passwordHash: "x",
-        email: "bubu@gmail.com",
+        email: `dudu-${tag}@test.local`,
         role: "attorney",
       },
       {
         fullName: "Attorney Bubu", // outsider
-        username: "attorney_bubu",
+        username: `attorney_bubu_${tag}`,
         passwordHash: "y",
-        email: "dudu@gmail.com",
+        email: `bubu-${tag}@test.local`,
         role: "attorney",
       },
     ])
@@ -51,7 +51,7 @@ beforeAll(async() => {
 
   const [matter] = await db
     .insert(matters)
-    .values({ clientId, title: 'Matter 1', type: 'will' })
+    .values({ clientId, title: "Matter 1", type: "will" })
     .returning({ id: matters.id });
   matterId = matter.id;
 
@@ -76,7 +76,7 @@ async function mattersVisibleTo(userId: string) {
 describe("matter visibility", () => {
   it("shows a matter to a member", async () => {
     const rows = await mattersVisibleTo(memberId);
-    expect(rows).toEqual([{ id: matterId, title: 'Matter 1'}]);
+    expect(rows).toEqual([{ id: matterId, title: "Matter 1" }]);
   });
 
   it("hides it from a user with no membership", async () => {
