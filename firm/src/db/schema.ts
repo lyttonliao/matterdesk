@@ -36,6 +36,7 @@ export const clients = pgTable("clients", {
   userId: uuid("user_id")
     .unique()
     .references(() => users.id, { onDelete: "set null" }),
+  fullName: text("full_name").notNull(),
   dob: date("dob"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
