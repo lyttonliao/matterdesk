@@ -106,8 +106,9 @@ docker compose exec -T db psql -U firm -d firm -At \
 # PostgreSQL 16.15 ..., vector 0.8.7
 ```
 
-The extension is available but not enabled. The first migration runs
-`CREATE EXTENSION IF NOT EXISTS vector`.
+The extension is available but not enabled. It gets enabled on Day 4 by a custom migration
+(`pnpm db:generate --custom --name enable_vector`, then add
+`CREATE EXTENSION IF NOT EXISTS vector;`) alongside the `chunks` table that uses it.
 
 **Gotchas on this machine:**
 
@@ -151,6 +152,30 @@ Files written by hand: `drizzle.config.ts` (schema `./src/db/schema.ts`, output 
 - Smoke test before a schema exists: `pnpm db:generate` should fail with
   `No schema files found for path config ['./src/db/schema.ts']` after reading the config.
   That error proves the config and `DATABASE_URL` load correctly.
+
+## Step 6: schema and first migration
+
+`src/db/schema.ts` is written by hand (users, clients, matters, matter_members, documents).
+Then:
+
+```bash
+pnpm db:generate --name init_schema   # writes drizzle/0000_init_schema.sql + meta/*
+# read the SQL before applying it
+pnpm db:migrate                       # applies unapplied files to DATABASE_URL (dev DB, port 5433)
+docker compose exec -T db psql -U firm -d firm -c '\dt' -c '\d matters'
+pnpm db:migrate                       # second run is a no-op
+```
+
+**Gotchas:**
+
+- `drizzle` is in `.prettierignore`: the generated JSON snapshots are not Prettier-style and
+  must not be hand-edited or reformatted.
+- Commit `drizzle/meta/_journal.json` and the snapshot: the next `db:generate` diffs against
+  them. Applied migrations are recorded in `drizzle.__drizzle_migrations`.
+- `generate` does not validate raw `sql` template strings in CHECKs. Validate by applying the
+  SQL in a rolled-back transaction (`BEGIN; ...; ROLLBACK;`) and trying bad inserts.
+  Postgres logs the deliberate constraint errors even though nothing persists.
+- A rename in the schema is generated as drop + add (data loss). Always read the SQL.
 
 ## Replication checklist
 
