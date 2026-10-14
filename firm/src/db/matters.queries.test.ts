@@ -1,115 +1,152 @@
+// BIG PICTURE
+// Integration tests for the matter data layer, against the real dev Postgres.
+// Each test builds the data it needs through small helpers, so tests do not depend on
+// each other or on run order. Everything created is tracked and removed in afterAll.
 import { randomUUID } from "node:crypto";
-import { and, eq, inArray } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/postgres-js";
-import postgres from "postgres";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { eq, inArray } from "drizzle-orm";
+import { afterAll, describe, expect, it } from "vitest";
+import { client, db } from "@/db";
 import { clients, matterMembers, matters, users } from "@/db/schema";
-import { listMattersForUser, createMatter, getMatterForUser } from "./matters";
-import { env } from "@/env";
+import { createMatter, getMatterForUser, listMattersForUser } from "./matters";
 
-let sql = postgres(env.DATABASE_URL);
-let db = drizzle(sql);
+const tag = randomUUID().slice(0, 8); // unique per run, keeps unique columns collision-free
 
-const tag = randomUUID().slice(0, 8);
+let seq = 0; // unique per call, so two users with the same label cannot collide
+const userIds: string[] = [];
+const clientIds: string[] = [];
 
-let memberId1: string;
-let memberId2: string;
-let clientId1: string;
-let clientId2: string;
-let matterIds: string[];
-
-beforeAll(async () => {
-  const [member1, member2] = await db
+async function makeUser(label: string) {
+  const unique = `${label}-${tag}-${seq++}`;
+  const [user] = await db
     .insert(users)
-    .values([
-      {
-        fullName: "Test Attorney1",
-        username: `test-attorney-1-${tag}`,
-        passwordHash: "x",
-        email: `test-attorney-1-${tag}@test.local`,
-        role: "attorney",
-      },
-      {
-        fullName: "Test Attorney2",
-        username: `test-attorney-2-${tag}`,
-        passwordHash: "x",
-        email: `test-attorney-2-${tag}@test.local`,
-        role: "attorney",
-      },
-    ])
+    .values({
+      fullName: `Test ${label}`,
+      username: unique,
+      passwordHash: "x",
+      email: `${unique}@test.local`,
+      role: "attorney",
+    })
     .returning({ id: users.id });
-    memberId1 = member1.id;
-    memberId2 = member2.id;
-  
-  const [client1, client2] = await db
+  userIds.push(user.id);
+  return user.id;
+}
+
+async function makeClient() {
+  const [row] = await db
     .insert(clients)
-    .values([
-      { fullName: "Test Client1" },
-      { fullName: "Test Client2" },
-    ])
+    .values({ fullName: `Test Client ${tag}` })
     .returning({ id: clients.id });
-  clientId1 = client1.id;
-  clientId2 = client2.id;
+  clientIds.push(row.id);
+  return row.id;
+}
 
-  const dbMatters = await db
+// Seeds a matter directly (not through createMatter), so tests of the read functions
+// do not depend on the write function being correct.
+async function seedMatter(
+  clientId: string,
+  memberIds: string[],
+  title: string,
+) {
+  const [matter] = await db
     .insert(matters)
-    .values([
-      { id: randomUUID(), clientId: clientId1, title: `matter1-${tag}`, type: "will" },
-      { id: randomUUID(), clientId: clientId1, title: `matter2-${tag}`, type: "will" },
-      { id: randomUUID(), clientId: clientId1, title: `matter3-${tag}`, type: "will" },
-      { id: randomUUID(), clientId: clientId2, title: `matter4-${tag}`, type: "will" },
-      { id: randomUUID(), clientId: clientId2, title: `matter5-${tag}`, type: "will" },
-    ])
+    .values({ clientId, title, type: "will" })
     .returning({ id: matters.id });
-  matterIds = dbMatters.map((matter) => matter.id);
-
-  await db.insert(matterMembers).values([
-    { matterId: matterIds[0], userId: memberId1 },
-    { matterId: matterIds[1], userId: memberId1 },
-    { matterId: matterIds[2], userId: memberId1 },
-    { matterId: matterIds[3], userId: memberId2 },
-    { matterId: matterIds[4], userId: memberId2 },
-  ])
-});
-
+  await db
+    .insert(matterMembers)
+    .values(memberIds.map((userId) => ({ matterId: matter.id, userId })));
+  return matter.id;
+}
 
 afterAll(async () => {
-  await db.delete(matters).where(inArray(matters.id, matterIds));
-  await db.delete(clients).where(inArray(clients.id, [clientId1, clientId2]));
-  await db.delete(users).where(inArray(users.id, [memberId1, memberId2]));
-  await sql.end();
+  // matters first: matters.client_id has no cascade. This also cascades to members.
+  await db.delete(matters).where(inArray(matters.clientId, clientIds));
+  await db.delete(clients).where(inArray(clients.id, clientIds));
+  await db.delete(users).where(inArray(users.id, userIds));
+  await client.end();
 });
 
-describe("matters", () => {
-  it("create a matter", async () => {
+describe("createMatter", () => {
+  it("creates an open matter and makes the creator a member", async () => {
+    const userId = await makeUser("creator");
+    const clientId = await makeClient();
+
     const matter = await createMatter(
-      {
-        title: 'New Matter 1',
-        type: "medicaid",
-        clientId: clientId1
-      }, 
-      memberId1,
+      { clientId, title: `new-${tag}`, type: "medicaid" },
+      userId,
     );
-    matterIds.push(matter.id);
-    expect(matter.title).toEqual('New Matter 1');
+
+    expect(matter).toMatchObject({ title: `new-${tag}`, status: "open" });
+    const visible = await listMattersForUser(userId);
+    expect(visible.map((m) => m.id)).toEqual([matter.id]);
   });
 
-  it("successfully get a matter", async () => {
-    const matterId = matterIds[0];
-    const matter = await getMatterForUser(matterId, memberId1);
-    expect(matter.id).toEqual(matterId);
-  });
+  it("leaves no matter behind when the membership insert fails", async () => {
+    const clientId = await makeClient();
+    const title = `rollback-${tag}`;
 
-  it("get an invalid matter id", async () => {
-    const matter = await getMatterForUser(randomUUID(), memberId1);
-    expect(matter).toBeNull();
-  });
+    // random uuid = no such user, so the matter_members foreign key rejects it
+    await expect(
+      createMatter({ clientId, title, type: "will" }, randomUUID()),
+    ).rejects.toThrow();
 
-  it("successfully gets a list of matters", async () => {
-    const memberOneMatters = await listMattersForUser(memberId1);
-    const memberTwoMatters = await listMattersForUser(memberId2);
-    expect(memberOneMatters).toHaveLength(4);
-    expect(memberTwoMatters).toHaveLength(2);
+    const leftovers = await db
+      .select({ id: matters.id })
+      .from(matters)
+      .where(eq(matters.title, title));
+    expect(leftovers).toEqual([]);
   });
 });
 
+describe("getMatterForUser", () => {
+  it("returns the matter to a member", async () => {
+    const userId = await makeUser("member");
+    const matterId = await seedMatter(
+      await makeClient(),
+      [userId],
+      `get-${tag}`,
+    );
+
+    const matter = await getMatterForUser(matterId, userId);
+
+    expect(matter).toMatchObject({ id: matterId, title: `get-${tag}` });
+  });
+
+  it("returns null to a user who is not a member", async () => {
+    const member = await makeUser("member");
+    const outsider = await makeUser("outsider");
+    const matterId = await seedMatter(
+      await makeClient(),
+      [member],
+      `private-${tag}`,
+    );
+
+    expect(await getMatterForUser(matterId, outsider)).toBeNull();
+  });
+
+  it("returns null for an id that does not exist", async () => {
+    const userId = await makeUser("member");
+
+    expect(await getMatterForUser(randomUUID(), userId)).toBeNull();
+  });
+});
+
+describe("listMattersForUser", () => {
+  it("returns only the user's own matters, newest first", async () => {
+    const me = await makeUser("me");
+    const other = await makeUser("other");
+    const clientId = await makeClient();
+    const first = await seedMatter(clientId, [me], `first-${tag}`);
+    const second = await seedMatter(clientId, [me], `second-${tag}`);
+    await seedMatter(clientId, [other], `not-mine-${tag}`);
+
+    const list = await listMattersForUser(me);
+
+    expect(list.map((m) => m.id)).toEqual([second, first]);
+  });
+
+  it("returns an empty list for a user with no memberships", async () => {
+    const userId = await makeUser("lonely");
+
+    expect(await listMattersForUser(userId)).toEqual([]);
+  });
+});
