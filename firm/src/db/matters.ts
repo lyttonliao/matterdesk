@@ -33,7 +33,10 @@ export async function createMatter(
   creatorId: string,
 ) {
   return db.transaction(async (tx) => {
-    const [matter] = await tx.insert(matters).values(input).returning();
+    const [matter] = await tx
+      .insert(matters)
+      .values({ ...input, createdBy: creatorId })
+      .returning();
     await tx
       .insert(matterMembers)
       .values({ matterId: matter.id, userId: creatorId });

@@ -50,6 +50,9 @@ export const matters = pgTable(
     clientId: uuid("client_id")
       .notNull()
       .references(() => clients.id),
+    createdBy: uuid("created_by")
+      .notNull()
+      .references(() => users.id),
     title: text("title").notNull(),
     status: text("status").notNull().default("open"),
     type: text("type").notNull(),
@@ -60,6 +63,7 @@ export const matters = pgTable(
   },
   (t) => [
     index("matters_client_id_idx").on(t.clientId),
+    index("matters_created_by_idx").on(t.createdBy),
     check(
       "matters_status_check",
       sql`${t.status} IN ('open', 'pending', 'closed')`,

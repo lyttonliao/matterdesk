@@ -54,7 +54,7 @@ beforeAll(async () => {
 
   const [matter] = await db
     .insert(matters)
-    .values({ clientId, title: "Matter 1", type: "will" })
+    .values({ clientId, title: "Matter 1", type: "will", createdBy: memberId })
     .returning({ id: matters.id });
   matterId = matter.id;
 

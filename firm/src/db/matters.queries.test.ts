@@ -49,7 +49,7 @@ async function seedMatter(
 ) {
   const [matter] = await db
     .insert(matters)
-    .values({ clientId, title, type: "will" })
+    .values({ clientId, title, type: "will", createdBy: memberIds[0] })
     .returning({ id: matters.id });
   await db
     .insert(matterMembers)
@@ -80,7 +80,7 @@ describe("createMatter", () => {
     expect(visible.map((m) => m.id)).toEqual([matter.id]);
   });
 
-  it("leaves no matter behind when the membership insert fails", async () => {
+  it("leaves no matter behind when the creator does not exist", async () => {
     const clientId = await makeClient();
     const title = `rollback-${tag}`;
 
