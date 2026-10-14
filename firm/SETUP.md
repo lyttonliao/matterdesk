@@ -133,3 +133,29 @@ Concepts:
 - Validate configuration once at boot (fail fast) and import the typed `env`, never
   `process.env`. The schema lives in its own file so tests do not parse the real environment.
 - Environment values are strings: use `z.coerce.number()` for numbers.
+
+## Step 8: app role for Row-Level Security (RLS)
+
+A superuser bypasses RLS, so the app must not connect as `firm`. Create a restricted role
+`firm_app` (owner `firm` keeps migrations):
+
+```bash
+pnpm db:generate --custom --name=app_role   # ONCE: each run adds a journal entry + snapshot
+# write drizzle/0001_app_role.sql: guarded CREATE ROLE, GRANT USAGE, GRANT table privileges,
+# ALTER DEFAULT PRIVILEGES for future tables; separate statements with --> statement-breakpoint
+pnpm db:migrate
+psql "$DATABASE_URL" -c "ALTER ROLE firm_app PASSWORD 'firm_app_dev'"   # dev only, out of band
+```
+
+Concepts:
+
+- Roles are cluster-wide; `CREATE ROLE` has no `IF NOT EXISTS`, hence the `DO` block.
+- The password is not in the migration (it is committed). Production sets it from Secrets
+  Manager or Terraform.
+- `ALTER DEFAULT PRIVILEGES` covers tables created later; `GRANT ... ON ALL TABLES` only
+  the existing ones.
+- Env split: the app reads `APP_DATABASE_URL` (`firm_app`); `DATABASE_URL` (owner) is for
+  drizzle-kit and test seeding only.
+- If drizzle-kit fails with just "Command failed", call `migrate()` from
+  `drizzle-orm/postgres-js/migrator` in a script to see the real error (here: a journal
+  entry with no SQL file).

@@ -6,7 +6,7 @@ import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 
-// Integration tests talk to the Compose Postgres, so they need DATABASE_URL.
+// Integration tests talk to the Compose Postgres, so they need APP_DATABASE_URL.
 // Vitest workers inherit process.env, so loading it here is enough.
 if (existsSync(".env")) process.loadEnvFile(".env");
 

@@ -4,9 +4,14 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { clients, matterMembers, matters, users } from "@/db/schema";
-import { env } from "@/env";
 
-const sql = postgres(env.DATABASE_URL);
+// Seeding and cleanup use the owner role: once RLS is on, firm_app can only touch
+// rows its user is allowed to see, so it cannot insert arbitrary fixtures.
+const ownerUrl = process.env.DATABASE_URL;
+if (!ownerUrl)
+  throw new Error("DATABASE_URL (owner role) is required for tests");
+
+const sql = postgres(ownerUrl);
 const db = drizzle(sql);
 
 const tag = randomUUID().slice(0, 8); // unique per run
