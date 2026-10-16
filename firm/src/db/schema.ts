@@ -50,6 +50,10 @@ export const matters = pgTable(
     clientId: uuid("client_id")
       .notNull()
       .references(() => clients.id),
+    // Who created the matter. The RLS select policy lets a creator read the row before
+    // their matter_members row exists, which `INSERT ... RETURNING` needs. The app role
+    // cannot UPDATE this column (column grants in 0003_rls_policies.sql), otherwise a
+    // member could rewrite it and hand someone else read access.
     createdBy: uuid("created_by")
       .notNull()
       .references(() => users.id),
@@ -75,6 +79,8 @@ export const matters = pgTable(
   ],
 );
 
+// The permission table: a user can reach a matter (and its documents) only through a
+// row here. The RLS policies on matters and documents are written in terms of it.
 export const matterMembers = pgTable(
   "matter_members",
   {
