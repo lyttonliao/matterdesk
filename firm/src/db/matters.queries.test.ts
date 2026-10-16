@@ -2,12 +2,15 @@
 // Integration tests for the matter data layer, against the real dev Postgres.
 // Each test builds the data it needs through small helpers, so tests do not depend on
 // each other or on run order. Everything created is tracked and removed in afterAll.
+// Two connections: fixtures and verification use the owner role (bypasses RLS); the
+// functions under test use firm_app via "@/db", exactly as the running app does.
 import { randomUUID } from "node:crypto";
 import { eq, inArray } from "drizzle-orm";
 import { afterAll, describe, expect, it } from "vitest";
-import { client, db } from "@/db";
+import { client } from "@/db";
 import { clients, matterMembers, matters, users } from "@/db/schema";
 import { createMatter, getMatterForUser, listMattersForUser } from "./matters";
+import { ownerDb as db, ownerSql } from "./test-owner";
 
 const tag = randomUUID().slice(0, 8); // unique per run, keeps unique columns collision-free
 
@@ -62,6 +65,7 @@ afterAll(async () => {
   await db.delete(matters).where(inArray(matters.clientId, clientIds));
   await db.delete(clients).where(inArray(clients.id, clientIds));
   await db.delete(users).where(inArray(users.id, userIds));
+  await ownerSql.end();
   await client.end();
 });
 

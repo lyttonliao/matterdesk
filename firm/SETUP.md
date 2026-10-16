@@ -159,3 +159,77 @@ Concepts:
 - If drizzle-kit fails with just "Command failed", call `migrate()` from
   `drizzle-orm/postgres-js/migrator` in a script to see the real error (here: a journal
   entry with no SQL file).
+
+## Step 9: matters.created_by
+
+Why: the RLS select policy needs to let a creator read a matter before their
+`matter_members` row exists (`INSERT ... RETURNING`).
+
+```bash
+# schema.ts: matters.createdBy (uuid, notNull, FK to users) + index matters_created_by_idx
+# matters.ts: createMatter inserts { ...input, createdBy: creatorId }
+# test fixtures that insert matters directly now pass createdBy
+pnpm db:generate --name=matters_created_by   # a real schema change: no --custom
+cat drizzle/0002_matters_created_by.sql      # ADD COLUMN NOT NULL, FK, CREATE INDEX
+pnpm db:migrate
+```
+
+Concepts:
+
+- The creator is a separate, trusted argument (`creatorId`, from the session), spread last,
+  so a caller cannot choose it through `input` (mass assignment).
+- Adding a `NOT NULL` column only works directly because the tables were empty. On a populated
+  table: add nullable, backfill, then add the constraint.
+- FK `ON DELETE NO ACTION`: a user who created matters cannot be hard-deleted (audit trail).
+- Index the column the policy filters on, or every matter query scans the table.
+
+## Step 10: Row-Level Security policies
+
+```bash
+pnpm db:generate --custom --name=rls_policies   # ONCE, see Step 8
+# write drizzle/0003_rls_policies.sql (policy table and helper explained in docs/NOTES-day3.md, sections 2-3):
+#   app_user_id() helper; ENABLE ROW LEVEL SECURITY on matters, matter_members, documents;
+#   policies for select/insert/update; no DELETE policy; REVOKE UPDATE then
+#   GRANT UPDATE (title, status, type, opened_at) ON matters
+pnpm db:migrate
+psql "$DATABASE_URL" -c "select tablename, policyname, cmd from pg_policies order by 1, 2"
+```
+
+Test risky SQL before applying it, inside a transaction that rolls back:
+
+```bash
+(echo "BEGIN;"; cat check.sql; echo "ROLLBACK;") | psql "$DATABASE_URL"
+# inside check.sql, act as the app: SET LOCAL ROLE firm_app;
+#   select set_config('app.user_id', '<uuid>', true);
+```
+
+Concepts:
+
+- `ENABLE ROW LEVEL SECURITY` = default deny. `USING` filters existing rows; `WITH CHECK`
+  validates new ones. No policy for a command (here DELETE) means that command is denied.
+- `app_user_id()` uses `NULLIF(…, '')` because a reverted custom setting is `''`, and
+  `''::uuid` throws. No user set means NULL means no rows (fail closed).
+- Policy recursion: `matter_members`' own policy must not query `matter_members`.
+- RLS cannot compare old and new values, so immutable columns are protected with column
+  privileges, which are checked before RLS.
+
+## Step 11: per-request identity and tests
+
+```bash
+# src/db/with-user.ts: withUser(userId, fn) = transaction + set_config('app.user_id', id, true)
+# src/db/matters.ts: every function runs inside withUser
+# src/db/test-owner.ts: owner connection for fixtures (reads DATABASE_URL directly)
+# tests: matters.queries.test.ts and matters.test.ts seed via the owner;
+#        with-user.test.ts and matters.rls.test.ts are new
+pnpm format && pnpm typecheck && pnpm lint
+pnpm test          # run AFTER db:migrate: the RLS tests fail by design before it
+```
+
+Concepts:
+
+- Transaction-scoped setting (`SET LOCAL` semantics): ends at commit/rollback, so a pooled
+  connection cannot leak one user's identity to the next request.
+- `set_config` takes bind parameters; `SET` does not (injection risk).
+- Two connections in tests: owner for fixtures and verification, `firm_app` for the code
+  under test. A leftover check as `firm_app` would pass even if the rollback failed.
+- Assert the Postgres error code (`42501`) on `err.cause`, not the message text.

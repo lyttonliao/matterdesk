@@ -1,3 +1,6 @@
+// BIG PICTURE
+// Owner-connection test of the membership join itself (who is a member of what). It does
+// not exercise RLS: see matters.rls.test.ts for that. Data is seeded once in beforeAll.
 import { randomUUID } from "node:crypto";
 import { and, eq, inArray } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
