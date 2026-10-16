@@ -116,7 +116,7 @@ export type Matter = typeof matters.$inferSelect;
 export type NewMatter = typeof matters.$inferInsert;
 
 // BIG PICTURE
-// One row per logged-in browser. The cookie holds a random token; this table holds 
+// One row per logged-in browser. The cookie holds a random token; this table holds
 // only its SHA-256 hash, so a leaked database dump cannot be replayed as live sessions
 // Deleting a row logs that browser out immediately (the reason to prefer this over JWT)
 export const sessions = pgTable(
