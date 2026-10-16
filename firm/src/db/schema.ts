@@ -114,3 +114,26 @@ export const documents = pgTable(
 
 export type Matter = typeof matters.$inferSelect;
 export type NewMatter = typeof matters.$inferInsert;
+
+// BIG PICTURE
+// One row per logged-in browser. The cookie holds a random token; this table holds 
+// only its SHA-256 hash, so a leaked database dump cannot be replayed as live sessions
+// Deleting a row logs that browser out immediately (the reason to prefer this over JWT)
+export const sessions = pgTable(
+  "sessions",
+  {
+    // sha256(token), hex. primary key doubles as the look up index
+    id: text("id").primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index("session_user_id_idx").on(t.userId),
+    index("session_expires_at_idx").on(t.expiresAt),
+  ],
+);
