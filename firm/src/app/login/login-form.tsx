@@ -27,7 +27,7 @@ export function LoginForm() {
         />
       </label>
       <label className="flex flex-col gap-1 text-sm">
-        <span>Email</span>
+        <span>Password</span>
         <input
           name="password"
           type="password"
