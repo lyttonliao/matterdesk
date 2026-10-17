@@ -233,3 +233,30 @@ Concepts:
 - Two connections in tests: owner for fixtures and verification, `firm_app` for the code
   under test. A leftover check as `firm_app` would pass even if the rollback failed.
 - Assert the Postgres error code (`42501`) on `err.cause`, not the message text.
+
+## Step 12: authentication (opaque server sessions)
+
+```bash
+pnpm add @node-rs/argon2                 # Argon2id hashing (OWASP: 19 MiB, 2 passes, 1 lane)
+pnpm db:generate --name=sessions && pnpm db:migrate   # sessions(id = SHA-256 of token, user_id, expires_at)
+# src/auth/password.ts  hashPassword / verifyPassword
+# src/auth/session.ts   createSession / validateSession (sliding 30-day expiry) / deleteSession
+# src/auth/cookie.ts    the only place that knows the cookie name and flags
+# src/auth/current-user.ts  getCurrentUser(): cookie -> session -> user | null (cached per request)
+# src/auth/login.ts     login(): identical failure for bad email and bad password, 5 failures per 15 min lockout
+# src/app/login/        loginAction / logoutAction (Server Actions), login page + form
+# src/app/page.tsx      redirect("/login") without a user; else list matters via listMattersForUser(user.id)
+# scripts/create-user.ts  operator script (owner connection), password from NEW_USER_PASSWORD
+read -s PW && NEW_USER_PASSWORD=$PW node --env-file=.env scripts/create-user.ts \
+  alice@firm.test alice "Alice Attorney" attorney
+pnpm format && pnpm typecheck && pnpm lint && pnpm test
+pnpm dev    # / redirects to /login; sign in; sign out; / redirects again
+```
+
+Concepts:
+
+- The cookie carries a random token; the database stores only its SHA-256 hash, so a leaked
+  `sessions` table cannot be replayed. Logout deletes the row and takes effect immediately.
+- The user id given to `withUser` always comes from `getCurrentUser()`, never from client input.
+- `redirect()` throws; code after it does not run, so TypeScript narrows `user` to non-null.
+- Server Actions are POST-only with an Origin check; with `SameSite=Lax` that is the CSRF defense.

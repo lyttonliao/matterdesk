@@ -22,13 +22,18 @@ const matterColumns = {
 
 // The WHERE on matter_members is the application-level check. RLS enforces the same
 // rule underneath, so a future function that forgets the filter still cannot leak rows.
-export async function listMattersForUser(userId: string) {
+export async function listMattersForUser(userId: string, status?: Matter["status"]) {
   return withUser(userId, (tx) =>
     tx
       .select(matterColumns)
       .from(matters)
       .innerJoin(matterMembers, eq(matters.id, matterMembers.matterId))
-      .where(eq(matterMembers.userId, userId))
+      .where(
+        and(
+          eq(matterMembers.userId, userId),
+          status ? eq(matters.status, status) : undefined,
+        ),
+      )
       .orderBy(desc(matters.createdAt)),
   );
 }
