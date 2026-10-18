@@ -137,3 +137,25 @@ export const sessions = pgTable(
     index("session_expires_at_idx").on(t.expiresAt),
   ],
 );
+
+export const notes = pgTable(
+  "notes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    matterId: uuid("matter_id")
+      .notNull()
+      .references(() => matters.id, { onDelete: "cascade" }),
+    authorId: uuid("author_id")
+      .notNull()
+      .references(() => users.id),
+    body: text("body").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    // serves "notes of one matter, newest first" without a sort step
+    index("notes_matter_id_created_at_idx").on(t.matterId, t.createdAt),
+    check("notes_body_check", sql`length(btrim(${t.body})) BETWEEN 1 AND 5000`),
+  ],
+);
