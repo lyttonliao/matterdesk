@@ -2,11 +2,9 @@
 // GET /api/matters?status=open. JSON list of the matters the signed-in user belongs to
 // A route handler is a public endpoint like a Server Action, so it authenticates
 // itself and validates its query string. The user id comes from the session only.
-import { z } from "zod";
 import { listMattersForUser } from "@/db/matters";
+import { StatusSchema } from "@/app/matters/status-filter";
 import { withApiUser } from "../with-api-user";
-
-const StatusSchema = z.enum(["open", "pending", "closed"]).optional();
 
 export const GET = withApiUser(async (request, user) => {
   // searchParams.get returns null when absent; zod's optional() wants undefined
