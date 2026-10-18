@@ -81,3 +81,16 @@ export async function getMatterForUser(
 
   return matter ?? null;
 }
+
+// false for both "no such matter" and "not a member": RLS hides the row, so the
+// UPDATE touches 0 rows. Only status is written, which the firm_app column grant allows
+export async function closeMatter(matterId: string, userId: string) {
+  const rows = await withUser(userId, (tx) =>
+    tx
+      .update(matters)
+      .set({ status: "closed" })
+      .where(eq(matters.id, matterId))
+      .returning({ id: matters.id }),
+  );
+  return rows.length > 0;
+}
