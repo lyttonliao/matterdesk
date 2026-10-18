@@ -11,9 +11,9 @@ build, written questions, or code review), then a team interview.
 | Module | Topic                                                                      | Status in `firm/`                                                                                                                                                         |
 | ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 00     | What to expect, five-session plan                                          | read                                                                                                                                                                      |
-| 01     | Next.js 15 / React 19                                                      | partial: async `cookies()` and a Server Component page done. TODO: Server Action with zod + `useActionState`, route handler with awaited `params` and 401/404             |
+| 01     | Next.js 15 / React 19                                                      | done: async `cookies()`, Server Component pages (list with `?status=`, `/matters/[id]`), create-matter Server Action (zod + `useActionState`), route handlers with awaited `params` and 401/404 |
 | 02     | PostgreSQL and SQL                                                         | mostly done: schema, indexes, parameterized queries, `withUser` transactions. TODO: the four query drills (LEFT JOIN count, membership `EXISTS`, `DISTINCT ON`, `FILTER`) |
-| 03     | Auth and permissions                                                       | mostly done: sessions, Argon2id, cookie flags, RLS. TODO: role check on matter insert, IDOR check in every route                                                          |
+| 03     | Auth and permissions                                                       | mostly done: sessions, Argon2id, cookie flags, RLS, role check on matter insert, scoped queries in the two routes and the detail page. TODO: role rules for notes (paralegal cannot close)  |
 | 04     | RAG and permission-aware retrieval                                         | not started (shares Days 4-6 of the AI plan)                                                                                                                              |
 | 05     | Self-hosted LLMs, Docker, sandboxing                                       | covered by the AI plan (Days 1-2, 9, 11); talking points only                                                                                                             |
 | 06     | Code review drills (A: document route, B: RAG answer, C: client component) | not started                                                                                                                                                               |
@@ -22,12 +22,11 @@ build, written questions, or code review), then a team interview.
 
 ## Next, in order
 
-1. Create-matter Server Action: zod validation, `getCurrentUser()`, role check
-   (`client` cannot create), `createMatter(input, user.id)`, form with `useActionState`, test.
-   Covers module 01, 03 and the permission rule of 07.
-2. Route handler `GET /api/matters?status=` and `GET /api/matters/[id]` (401, 404, scoped query).
-3. Matter list with `?status=` filter, detail page with notes (notes table + add-note action;
-   paralegals add notes but cannot close a matter).
+1. ~~Create-matter Server Action~~ done.
+2. ~~Route handlers `GET /api/matters?status=` and `GET /api/matters/[id]`~~ done.
+3. ~~Matter list `?status=` filter and `/matters/[id]` detail page~~ done. Remaining: notes
+   (notes table + RLS migration + add-note action on the detail page; paralegals add notes
+   but cannot close a matter, so also a close-matter action with a role check).
 4. Module 02 query drills.
 5. Module 06 drills, then redo module 07 timed (90 min) in StackBlitz or CodeSandbox.
 6. Module 04 with the AI plan's Days 4-6, then module 08 stories.
