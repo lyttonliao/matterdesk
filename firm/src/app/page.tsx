@@ -53,7 +53,10 @@ export default async function Home({
         <ul className="flex flex-col gap-2">
           {matters.map((m) => (
             <li key={m.id}>
-              {m.title} ({m.status})
+              <Link href={`/matters/${m.id}`} className="underline">
+                {m.title}
+              </Link>
+              ({m.status})
             </li>
           ))}
         </ul>
