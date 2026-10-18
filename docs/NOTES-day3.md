@@ -133,4 +133,4 @@ Known gaps, deliberately left for later:
 - Validate risky SQL first in a transaction you roll back (`BEGIN; …; ROLLBACK;`). Switch identity inside it with `SET LOCAL ROLE firm_app`.
 
 ## Next
-Step 5: authentication. Opaque server-side sessions (not JWTs) for a first-party web app: Argon2id password hashing, a `sessions` table storing the hash of a random token, `HttpOnly` + `Secure` + `SameSite` cookies, idle and absolute expiry, token rotation on login, login rate limiting. JWTs are for verifiers that cannot reach your session store (service-to-service, OAuth/OIDC); we will compare them in a later note.
+Authentication is built (see `firm/SETUP.md` Step 12). Remaining Day 3 work: a create-matter Server Action with zod input validation and a role check (a `client` user must not create matters), then RLS on `clients`/`users`. Then Day 4 (embeddings). JWTs vs. opaque sessions comparison still owed: JWTs are for verifiers that cannot reach your session store (service-to-service, OAuth/OIDC).
