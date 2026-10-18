@@ -49,10 +49,17 @@ async function seedMatter(
   clientId: string,
   memberIds: string[],
   title: string,
+  status: "open" | "pending" | "closed" = "open",
 ) {
   const [matter] = await db
     .insert(matters)
-    .values({ clientId, title, type: "will", createdBy: memberIds[0] })
+    .values({
+      clientId,
+      title,
+      type: "will",
+      status,
+      createdBy: memberIds[0],
+    })
     .returning({ id: matters.id });
   await db
     .insert(matterMembers)
@@ -152,5 +159,16 @@ describe("listMattersForUser", () => {
     const userId = await makeUser("lonely");
 
     expect(await listMattersForUser(userId)).toEqual([]);
+  });
+
+  it("returns the user's matters filtered by status", async () => {
+    const userId = await makeUser("creator");
+    const clientId = await makeClient();
+    const open = await seedMatter(clientId, [userId], `first-${tag}`);
+    await seedMatter(clientId, [userId], `first-${tag}`, "closed");
+
+    const list = await listMattersForUser(userId, "open");
+
+    expect(list.map((m) => m.id)).toEqual([open]);
   });
 });

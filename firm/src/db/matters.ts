@@ -20,9 +20,17 @@ const matterColumns = {
   createdAt: matters.createdAt,
 };
 
+type MatterSummary = Pick<
+  Matter,
+  "id" | "title" | "status" | "type" | "createdAt"
+>;
+
 // The WHERE on matter_members is the application-level check. RLS enforces the same
 // rule underneath, so a future function that forgets the filter still cannot leak rows.
-export async function listMattersForUser(userId: string, status?: Matter["status"]) {
+export async function listMattersForUser(
+  userId: string,
+  status?: Matter["status"],
+) {
   return withUser(userId, (tx) =>
     tx
       .select(matterColumns)
@@ -59,7 +67,10 @@ export async function createMatter(
 
 // null for both "no such matter" and "not a member", so callers cannot probe which
 // matter ids exist.
-export async function getMatterForUser(matterId: string, userId: string) {
+export async function getMatterForUser(
+  matterId: string,
+  userId: string,
+): Promise<MatterSummary | null> {
   const [matter] = await withUser(userId, (tx) =>
     tx
       .select(matterColumns)
