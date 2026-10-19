@@ -8,28 +8,35 @@ browser, so the table below is the source of truth for this repo.
 Target: on-site assessment on a laptop with nothing installed (likely a small Next.js
 build, written questions, or code review), then a team interview.
 
-| Module | Topic                                                                      | Status in `firm/`                                                                                                                                                         |
-| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 00     | What to expect, five-session plan                                          | read                                                                                                                                                                      |
+| Module | Topic                                                                      | Status in `firm/`                                                                                                                                                                               |
+| ------ | -------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 00     | What to expect, five-session plan                                          | read                                                                                                                                                                                            |
 | 01     | Next.js 15 / React 19                                                      | done: async `cookies()`, Server Component pages (list with `?status=`, `/matters/[id]`), create-matter Server Action (zod + `useActionState`), route handlers with awaited `params` and 401/404 |
-| 02     | PostgreSQL and SQL                                                         | mostly done: schema, indexes, parameterized queries, `withUser` transactions. TODO: the four query drills (LEFT JOIN count, membership `EXISTS`, `DISTINCT ON`, `FILTER`) |
-| 03     | Auth and permissions                                                       | mostly done: sessions, Argon2id, cookie flags, RLS, role check on matter insert, scoped queries in the two routes and the detail page. TODO: role rules for notes (paralegal cannot close)  |
-| 04     | RAG and permission-aware retrieval                                         | not started (shares Days 4-6 of the AI plan)                                                                                                                              |
-| 05     | Self-hosted LLMs, Docker, sandboxing                                       | covered by the AI plan (Days 1-2, 9, 11); talking points only                                                                                                             |
-| 06     | Code review drills (A: document route, B: RAG answer, C: client component) | not started                                                                                                                                                               |
-| 07     | Mock assessment: Matter Intake (90 min, do twice)                          | next                                                                                                                                                                      |
-| 08     | Team interview: stories, design questions, questions to ask                | no code                                                                                                                                                                   |
+| 02     | PostgreSQL and SQL                                                         | mostly done: schema, indexes, parameterized queries, `withUser` transactions. drills done (LEFT JOIN count, membership `EXISTS`, `DISTINCT ON`, `FILTER`; answers in `docs/DRILLS-sql-answer.sql`)                       |
+| 03     | Auth and permissions                                                       | mostly done: sessions, Argon2id, cookie flags, RLS, role check on matter insert, scoped queries in the two routes and the detail page. TODO: see Next step 4                                    |
+| 04     | RAG and permission-aware retrieval                                         | not started (shares Days 4-6 of the AI plan)                                                                                                                                                    |
+| 05     | Self-hosted LLMs, Docker, sandboxing                                       | covered by the AI plan (Days 1-2, 9, 11); talking points only                                                                                                                                   |
+| 06     | Code review drills (A: document route, B: RAG answer, C: client component) | not started                                                                                                                                                                                     |
+| 07     | Mock assessment: Matter Intake (90 min, do twice)                          | after steps 1-2 of Next                                                                                                                                                                         |
+| 08     | Team interview: stories, design questions, questions to ask                | no code                                                                                                                                                                                         |
+
+## Done
+
+Create-matter Server Action, route handlers (`GET /api/matters`, `GET /api/matters/[id]`),
+`?status=` filter, `/matters/[id]` detail page, notes (table, RLS, add-note action), and
+close-matter (attorney/admin only).
 
 ## Next, in order
 
-1. ~~Create-matter Server Action~~ done.
-2. ~~Route handlers `GET /api/matters?status=` and `GET /api/matters/[id]`~~ done.
-3. ~~Matter list `?status=` filter and `/matters/[id]` detail page~~ done. Remaining: notes
-   (notes table + RLS migration + add-note action on the detail page; paralegals add notes
-   but cannot close a matter, so also a close-matter action with a role check).
-4. Module 02 query drills.
-5. Module 06 drills, then redo module 07 timed (90 min) in StackBlitz or CodeSandbox.
-6. Module 04 with the AI plan's Days 4-6, then module 08 stories.
-
-Open gaps from Day 3: no RLS on `clients`/`users`, only `/` is gated, login lockout is
-in-memory (`shortcut:` in `src/auth/login.ts`).
+1. ~~Module 02 query drills~~ done.
+2. Module 06 code-review drills (snippets in `docs/DRILLS-review.md`; A: document route, B: RAG answer, C: client component).
+   Raw material from our own bugs: missing `EXISTS`, wrong table in an insert, mis-named column.
+3. Module 07 mock assessment: Matter Intake, 90 min timed in StackBlitz or CodeSandbox,
+   do it twice. Run it after steps 1-2 so the patterns are fresh.
+4. Security gaps (module 03):
+   - RLS on `clients`/`users` (then make `app_user_is_staff()` `SECURITY DEFINER`).
+   - Gate more than `/` (middleware or per-page checks).
+   - Replace the in-memory login lockout (`shortcut:` in `src/auth/login.ts`).
+5. Smaller gaps in notes and lists: edit/delete for notes (currently append-only),
+   pagination, a test for the detail page, an audit trail of who closed a matter.
+6. Module 04 (RAG, permission-aware retrieval) with the AI plan's Days 4-6, then module 08 stories.
